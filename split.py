@@ -3,8 +3,22 @@ import torch
 import numpy as np
 from tqdm import tqdm
 from sklearn.cluster import KMeans
+from sklearn.metrics.pairwise import cosine_similarity
 from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
 import os
+
+
+def _lazy_import_ruptures():
+    """Lazy import ruptures to avoid hard dependency at import time."""
+
+    try:
+        import ruptures as rpt
+    except ModuleNotFoundError as exc:  # pragma: no cover - defensive guard
+        raise ModuleNotFoundError(
+            "The 'ruptures' package is required for PELT-based segmentation. "
+            "Install it with `pip install ruptures`."
+        ) from exc
+    return rpt
 
 # ========== 初始化视觉模型 ==========
 visual_model_id = "Qwen/Qwen2.5-VL-3B-Instruct"
@@ -38,6 +52,55 @@ def extract_visual_embeddings(video_path, frame_interval=30):
     cap.release()
     return np.array(embeddings), np.array(frames)
 
+# ========== PELT 变化点检测 ==========
+def detect_change_points_pelt(
+    embeddings, frames, penalty=5.0, min_size=5, jump=1, cost_model="rbf"
+):
+    """利用 PELT 对相邻帧语义相似度序列做自适应切割。
+
+    Args:
+        embeddings (np.ndarray): 形状为 ``[N, D]`` 的帧向量。
+        frames (np.ndarray): 对应的帧编号，长度为 ``N``。
+        penalty (float): PELT 的惩罚系数，越大切点越少。
+        min_size (int): 邻接片段的最小样本数，防止过度切分。
+        jump (int): PELT 扫描步长，可用于加速。
+        cost_model (str): ruptures 成本函数，默认 ``rbf`` 适合非线性变化。
+
+    Returns:
+        list[int]: 以帧编号表示的切点列表（包含首尾）。
+    """
+
+    if len(embeddings) != len(frames):
+        raise ValueError("embeddings 与 frames 长度不一致")
+    if len(embeddings) < 2:
+        return [int(frames[0]), int(frames[-1])]
+
+    # 1. 构建“语义相似度变化”序列：相邻帧余弦相似度的反向值
+    pairwise_sim = cosine_similarity(embeddings)
+    # 只关注相邻帧，越大说明变化越剧烈
+    semantic_shift = 1.0 - np.clip(np.diag(pairwise_sim, k=1), 0.0, 1.0)
+    # 对齐长度，首元素补 0 代表起点
+    series = np.concatenate([[0.0], semantic_shift])[:, None]
+
+    rpt = _lazy_import_ruptures()
+    algo = rpt.Pelt(model=cost_model, jump=jump, min_size=min_size).fit(series)
+    # ruptures 返回的切点是索引+1 的位置（含结尾），需要映射回帧号
+    idx_change_points = algo.predict(pen=penalty)
+
+    change_points = [int(frames[0])]
+    for idx in idx_change_points:
+        # 跳过超出范围的末尾点，保证有序且唯一
+        if idx >= len(frames):
+            continue
+        change_points.append(int(frames[idx]))
+
+    if change_points[-1] != int(frames[-1]):
+        change_points.append(int(frames[-1]))
+
+    # 去重并排序，保证稳定
+    change_points = sorted(dict.fromkeys(change_points))
+    return change_points
+
 # ========== 聚类并切割 ==========
 def cluster_and_segment(video_path, embeddings, frames, method="kmeans", n_clusters=5):
     print("clusting")
@@ -48,15 +111,25 @@ def cluster_and_segment(video_path, embeddings, frames, method="kmeans", n_clust
         from sklearn.cluster import DBSCAN
         clusterer = DBSCAN(eps=1.5, min_samples=3)
         labels = clusterer.fit_predict(embeddings)
+    elif method == "pelt":
+        change_points = detect_change_points_pelt(embeddings, frames)
+        # 根据切点生成伪标签，便于后续可视化
+        labels = np.zeros(len(frames), dtype=int)
+        for seg_id in range(1, len(change_points)):
+            start_frame = change_points[seg_id - 1]
+            end_frame = change_points[seg_id]
+            mask = (frames >= start_frame) & (frames < end_frame)
+            labels[mask] = seg_id - 1
     else:
         raise ValueError("Unsupported clustering method")
 
-    # 依据聚类结果找到切点
-    change_points = [frames[0]]
-    for i in range(1, len(labels)):
-        if labels[i] != labels[i - 1]:
-            change_points.append(frames[i])
-    change_points.append(frames[-1])
+    if method != "pelt":
+        # 依据聚类结果找到切点
+        change_points = [frames[0]]
+        for i in range(1, len(labels)):
+            if labels[i] != labels[i - 1]:
+                change_points.append(frames[i])
+        change_points.append(frames[-1])
     return change_points, labels
 
 # # ========== 导出子视频 ==========
