@@ -7,6 +7,7 @@ context to the model for reasoning.
 """
 
 import copy
+import json
 import os
 from typing import Any, Dict, List, Sequence, Tuple
 
@@ -57,6 +58,9 @@ DEVICE_MAP = os.getenv("LLAVA_DEVICE_MAP", "auto")
 MAX_FRAMES = int(os.getenv("MAX_FRAMES", "64"))
 NUM_SAMPLES = int(os.getenv("NUM_SAMPLES", "8"))
 CONV_TEMPLATE = os.getenv("LLAVA_CONV_TEMPLATE", "qwen_1_5")
+RESULT_LOG_PATH = os.getenv(
+    "LLAVA_RESULT_LOG", os.path.join("output", "llava_video_samples.json")
+)
 
 
 def _split_inputs(
@@ -171,6 +175,32 @@ def _run_sample(
     return tokenizer.batch_decode(output, skip_special_tokens=True)[0].strip()
 
 
+def _append_sample_result(log_path: str, idx: int, sample: Dict[str, Any], reply: str) -> None:
+    os.makedirs(os.path.dirname(log_path) or ".", exist_ok=True)
+
+    entry = {
+        "sample_index": idx,
+        "id": sample.get("id"),
+        "correct_choice": sample.get("correct_choice", "@"),
+        "model_reply": reply,
+    }
+
+    existing: List[Dict[str, Any]] = []
+    if os.path.exists(log_path):
+        try:
+            with open(log_path, "r", encoding="utf-8") as fp:
+                loaded = json.load(fp)
+                if isinstance(loaded, list):
+                    existing = loaded
+        except json.JSONDecodeError:
+            existing = []
+
+    existing.append(entry)
+
+    with open(log_path, "w", encoding="utf-8") as fp:
+        json.dump(existing, fp, ensure_ascii=False, indent=2)
+
+
 def run_samples() -> None:
     tokenizer, model, image_processor, _ = load_pretrained_model(
         PRETRAINED_MODEL,
@@ -194,6 +224,7 @@ def run_samples() -> None:
         print(f"\n=== Sample {idx} (ID: {sample.get('id')}) ===")
         print("Correct choice:", sample.get("correct_choice", "@"))
         print("Model reply:", reply)
+        _append_sample_result(RESULT_LOG_PATH, idx, sample, reply)
 
 
 if __name__ == "__main__":
