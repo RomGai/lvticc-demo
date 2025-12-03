@@ -56,7 +56,7 @@ MODEL_NAME = os.getenv("LLAVA_MODEL_NAME", "llava_qwen")
 DEVICE = os.getenv("LLAVA_DEVICE", "cuda")
 DEVICE_MAP = os.getenv("LLAVA_DEVICE_MAP", "auto")
 MAX_FRAMES = int(os.getenv("MAX_FRAMES", "64"))
-NUM_SAMPLES = int(os.getenv("NUM_SAMPLES", "8"))
+NUM_SAMPLES = int(os.getenv("NUM_SAMPLES", "9999"))
 CONV_TEMPLATE = os.getenv("LLAVA_CONV_TEMPLATE", "qwen_1_5")
 RESULT_LOG_PATH = os.getenv(
     "LLAVA_RESULT_LOG", os.path.join("output", "llava_video_samples.json")
