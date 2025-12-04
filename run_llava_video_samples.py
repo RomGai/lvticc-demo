@@ -206,14 +206,14 @@ def run_samples() -> None:
         PRETRAINED_MODEL,
         None,
         MODEL_NAME,
-        torch_dtype=torch.bfloat16,
+        torch_dtype="bfloat16",
         device_map=DEVICE_MAP,
     )
     model.eval()
 
-    model = model.to(torch.bfloat16)
-    model_dtype=_get_model_dtype(model)
-    print(f"model dtype: {model_dtype}")
+    # model = model.to(torch.bfloat16)
+    # model_dtype=_get_model_dtype(model)
+    # print(f"model dtype: {model_dtype}")
 
     dataset = LongVideoBenchDataset(output_root="./output", max_num_frames=MAX_FRAMES)
 
