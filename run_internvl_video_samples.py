@@ -209,7 +209,8 @@ def _run_sample(model, tokenizer, sample: Dict[str, Any]) -> str:
     target_dtype = _get_target_dtype(model)
     pixel_values = pixel_values.to(device=target_device, dtype=target_dtype)
 
-    generation_config = getattr(model, "generation_config", None)
+    # generation_config = getattr(model, "generation_config", None)
+    generation_config = dict(max_new_tokens=1024, do_sample=True)
 
     response, _ = model.chat(
         tokenizer,
