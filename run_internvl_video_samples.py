@@ -19,7 +19,7 @@ from longvideobench_dataset import LongVideoBenchDataset
 
 MODEL_PATH = os.getenv("INTERNVL_MODEL_PATH", "OpenGVLab/InternVL-Chat-V1-5")
 DEVICE_MAP = os.getenv("INTERNVL_DEVICE_MAP", "auto")
-MAX_FRAMES = int(os.getenv("MAX_FRAMES", "64"))
+MAX_FRAMES = int(os.getenv("MAX_FRAMES", "16"))
 NUM_SAMPLES = int(os.getenv("NUM_SAMPLES", "9999"))
 RESULT_LOG_PATH = os.getenv(
     "INTERNVL_RESULT_LOG", os.path.join("output", "internvl_video_samples.json")
