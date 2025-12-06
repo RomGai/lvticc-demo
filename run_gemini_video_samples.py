@@ -102,7 +102,7 @@ def _run_sample(client: genai.Client, sample: dict) -> str:
 
 
 def run_samples() -> None:
-    client = genai.Client()
+    client = genai.Client(api_key="YOUR_API_KEY")
     dataset = LongVideoBenchDataset(output_root="./output", max_num_frames=MAX_FRAMES)
 
     for idx in range(min(NUM_SAMPLES, len(dataset))):
